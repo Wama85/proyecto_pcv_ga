@@ -1,0 +1,55 @@
+import cv2
+import numpy as np
+import os
+
+def load_image(path):
+    img = cv2.imread(path)
+    if img is None:
+        raise FileNotFoundError(f"No se encontró la imagen: {path}")
+    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+def detect_face_landmarks(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+    if len(faces) == 0:
+        raise ValueError("No se detectó rostro.")
+    return faces[0]  # (x, y, w, h)
+
+def apply_transformations(img, params):
+    wrinkle, brightness, saturation = params
+    img2 = img.copy()
+
+    # Detectar rostro
+    x, y, w, h = detect_face_landmarks(img2)
+    face = img2[y:y+h, x:x+w]
+
+    # --- 1️⃣ Ajustar brillo (más visible) ---
+    face = cv2.convertScaleAbs(face, alpha=1 - brightness * 0.7, beta=-brightness * 100)
+
+    # --- 2️⃣ Reducir saturación (piel más pálida) ---
+    hsv = cv2.cvtColor(face, cv2.COLOR_RGB2HSV).astype(np.float32)
+    hsv[..., 1] *= (1 - saturation * 0.8)
+    hsv = np.clip(hsv, 0, 255)
+    face = cv2.cvtColor(np.uint8(hsv), cv2.COLOR_HSV2RGB)
+
+    # --- 3️⃣ Añadir arrugas (ruido más fuerte) ---
+    noise = np.random.normal(0, wrinkle * 80, face.shape).astype(np.int16)
+    face = np.clip(face + noise, 0, 255).astype(np.uint8)
+
+    # --- 4️⃣ Resaltar bordes (líneas de expresión) ---
+    gray = cv2.cvtColor(face, cv2.COLOR_RGB2GRAY)
+    edges = cv2.Canny(gray, 80, 150)
+    face[edges > 0] = [60, 60, 60]  # dibuja arrugas finas grises
+
+    # --- 5️⃣ (Opcional) Mezclar textura de arrugas ---
+    texture_path = "data/base/wrinkles_overlay.jpg"
+    if os.path.exists(texture_path):
+        texture = cv2.imread(texture_path)
+        texture = cv2.resize(texture, (w, h))
+        texture = cv2.cvtColor(texture, cv2.COLOR_BGR2RGB)
+        face = cv2.addWeighted(face, 1, texture, wrinkle * 0.5, 0)
+
+    # Reemplazar rostro modificado
+    img2[y:y+h, x:x+w] = face
+    return img2
