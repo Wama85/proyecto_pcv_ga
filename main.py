@@ -25,7 +25,7 @@ ga = GeneticAlgorithm(
     generations=GENERACIONES,
     mutation_rate=0.2,
     crossover_rate=0.8,
-    n_params=3  # [arrugas, brillo, saturación]
+    n_params=4  # [arrugas, brillo, saturación]
 )
 
 # --- FUNCIÓN DE FITNESS ---
