@@ -58,18 +58,31 @@ def create_smooth_mask(width, height, margin=30):
 
 
 def apply_under_eye_bags(face, w, h, intensity):
-    """Aplica ojeras/bolsas bajo los ojos"""
+    """
+    Aplica ojeras/bolsas bajo los ojos de forma realista
+
+    Args:
+        face: Región del rostro
+        w, h: Dimensiones del rostro
+        intensity: Intensidad del efecto (0-1)
+
+    Returns:
+        Rostro con ojeras aplicadas
+    """
     if intensity < 0.3:
         return face
 
+    # Crear máscara para ojeras
     bags_mask = np.zeros((h, w), dtype=np.float32)
 
-    bag_y = int(h * 0.48)
+    # Parámetros de posición (ajustados para estar justo bajo los ojos)
+    eye_y = int(h * 0.42)  # Altura de los ojos
+    bag_y = int(h * 0.48)  # Justo debajo de los ojos
 
-    # Ojera izquierda
+    # Ojera izquierda (más ancha y realista)
     cv2.ellipse(bags_mask,
-                (int(w * 0.35), bag_y),
-                (int(w * 0.12), int(h * 0.08)),
+                (int(w * 0.35), bag_y),           # Centro
+                (int(w * 0.12), int(h * 0.08)),   # Tamaño
                 0, 0, 360, 1.0, -1)
 
     # Ojera derecha
@@ -78,54 +91,80 @@ def apply_under_eye_bags(face, w, h, intensity):
                 (int(w * 0.12), int(h * 0.08)),
                 0, 0, 360, 1.0, -1)
 
+    # Difuminar para efecto natural
     bags_mask = cv2.GaussianBlur(bags_mask, (25, 25), 0)
 
-    shadow_color = np.array([100, 85, 75], dtype=np.uint8)
+    # Crear capa de sombra (color púrpura/marrón oscuro)
+    shadow_color = np.array([100, 85, 75], dtype=np.uint8)  # RGB marrón-púrpura
     shadow_layer = np.ones_like(face) * shadow_color
 
+    # Aplicar sombra con la máscara
     bags_mask_3d = np.dstack([bags_mask] * 3)
-    alpha = min(intensity * 0.35, 0.5)
+    alpha = min(intensity * 0.35, 0.5)  # Intensidad controlada
 
     face = cv2.addWeighted(face, 1.0, shadow_layer, alpha * bags_mask_3d.mean(), 0)
-    face = (face * (1 - bags_mask_3d * alpha * 0.3)).astype(np.uint8)
+    face = (face * (1 - bags_mask_3d * alpha * 0.3)).astype(np.uint8)  # Oscurecer
 
     return face
 
 
 def thin_lips(face, w, h, intensity):
-    """Adelgaza los labios"""
+    """
+    Adelgaza los labios simulando pérdida de volumen
+
+    Args:
+        face: Región del rostro
+        w, h: Dimensiones del rostro
+        intensity: Intensidad del efecto (0-1)
+
+    Returns:
+        Rostro con labios adelgazados
+    """
     if intensity < 0.4:
         return face
 
+    # Posición aproximada de los labios
     lip_y = int(h * 0.72)
     lip_height = int(h * 0.08)
     lip_x_start = int(w * 0.35)
     lip_x_end = int(w * 0.65)
 
+    # Región de los labios
     lip_region = face[max(0, lip_y - lip_height):min(h, lip_y + lip_height),
                  max(0, lip_x_start):min(w, lip_x_end)]
 
     if lip_region.size == 0:
         return face
 
+    # Convertir a HSV para manipular color
     hsv_lips = cv2.cvtColor(lip_region, cv2.COLOR_RGB2HSV).astype(np.float32)
+
+    # Reducir saturación (labios más pálidos con la edad)
     hsv_lips[..., 1] *= (1 - intensity * 0.3)
+
+    # Reducir brillo ligeramente
     hsv_lips[..., 2] *= (1 - intensity * 0.2)
+
     hsv_lips = np.clip(hsv_lips, 0, 255)
     lip_region = cv2.cvtColor(np.uint8(hsv_lips), cv2.COLOR_HSV2RGB)
 
-    shrink_factor = 1 - (intensity * 0.15)
+    # Crear efecto de adelgazamiento (comprimir verticalmente)
+    shrink_factor = 1 - (intensity * 0.15)  # Reducir hasta 15%
     new_height = max(1, int(lip_region.shape[0] * shrink_factor))
 
+    # Redimensionar (adelgazar)
     thinned_lips = cv2.resize(lip_region, (lip_region.shape[1], new_height))
 
+    # Crear máscara de fusión suave
     blend_mask = np.linspace(0, 1, new_height).reshape(-1, 1)
     blend_mask = np.tile(blend_mask, (1, thinned_lips.shape[1]))
     blend_mask = cv2.GaussianBlur(blend_mask.astype(np.float32), (5, 5), 0)
     blend_mask = np.dstack([blend_mask] * 3)
 
+    # Calcular posición centrada
     y_offset = (lip_region.shape[0] - new_height) // 2
 
+    # Aplicar labios adelgazados con fusión suave
     temp_region = face[max(0, lip_y - lip_height):min(h, lip_y + lip_height),
                   max(0, lip_x_start):min(w, lip_x_end)].copy()
 
@@ -145,35 +184,56 @@ def thin_lips(face, w, h, intensity):
 
 
 def add_wrinkles_around_eyes(face, w, h, intensity):
-    """Añade arrugas alrededor de los ojos (patas de gallo)"""
+    """
+    Añade arrugas alrededor de los ojos (patas de gallo)
+
+    Args:
+        face: Región del rostro
+        w, h: Dimensiones del rostro
+        intensity: Intensidad del efecto (0-1)
+
+    Returns:
+        Rostro con arrugas
+    """
     if intensity < 0.5:
         return face
 
     gray = cv2.cvtColor(face, cv2.COLOR_RGB2GRAY)
-    edges = cv2.Canny(gray, 60, 120)
 
+    # Detectar bordes (arrugas naturales)
+    edges = cv2.Canny(gray, 100, 220)
+
+    # Crear máscaras para zona de ojos
     eye_mask_left = np.zeros((h, w), dtype=np.uint8)
     eye_mask_right = np.zeros((h, w), dtype=np.uint8)
 
+    # Región de ojo izquierdo
     cv2.ellipse(eye_mask_left,
                 (int(w * 0.35), int(h * 0.42)),
                 (int(w * 0.15), int(h * 0.12)),
                 0, 0, 360, 255, -1)
 
+    # Región de ojo derecho
     cv2.ellipse(eye_mask_right,
                 (int(w * 0.65), int(h * 0.42)),
                 (int(w * 0.15), int(h * 0.12)),
                 0, 0, 360, 255, -1)
 
+    # Combinar máscaras
     eye_mask = cv2.bitwise_or(eye_mask_left, eye_mask_right)
+
+    # Aplicar máscara a los bordes
     wrinkles = cv2.bitwise_and(edges, eye_mask)
 
+    # Dilatar para líneas más visibles
     kernel = np.ones((2, 2), np.uint8)
     wrinkles = cv2.dilate(wrinkles, kernel, iterations=1)
 
+    # Crear capa de arrugas oscuras
     wrinkle_layer = np.zeros_like(face)
-    wrinkle_layer[wrinkles > 0] = [60, 55, 50]
+    wrinkle_layer[wrinkles > 0] = [60, 55, 50]  # Color marrón oscuro
 
+    # Aplicar con intensidad controlada
     alpha = min(intensity * 0.3, 0.4)
     face = cv2.addWeighted(face, 1.0, wrinkle_layer, alpha, 0)
 
@@ -181,7 +241,16 @@ def add_wrinkles_around_eyes(face, w, h, intensity):
 
 
 def apply_transformations(img, params):
-    """Aplica todas las transformaciones de envejecimiento"""
+    """
+    Aplica transformaciones de envejecimiento al rostro
+
+    Args:
+        img: Imagen RGB
+        params: [wrinkle, desaturation, fade_color, edge_strength]
+
+    Returns:
+        Imagen envejecida
+    """
     wrinkle, desaturation, fade_color, edge_strength = params
     img2 = img.copy()
 
@@ -191,7 +260,7 @@ def apply_transformations(img, params):
     if face.size == 0 or w < 10 or h < 10:
         return img2
 
-    # 1. Tonos cálidos
+    # --- 1️⃣ Tonos cálidos (envejecimiento del color de piel) ---
     b, g, r = cv2.split(face)
     r = cv2.add(r, int(fade_color * 20))
     g = cv2.add(g, int(fade_color * 10))
@@ -199,14 +268,14 @@ def apply_transformations(img, params):
     face = cv2.merge([b, g, r])
     face = np.clip(face, 0, 255).astype(np.uint8)
 
-    # 2. Desaturación y brillo
+    # --- 2️⃣ Desaturación y reducción de brillo ---
     hsv = cv2.cvtColor(face, cv2.COLOR_RGB2HSV).astype(np.float32)
     hsv[..., 1] *= (1 - desaturation * 0.4)
     hsv[..., 2] *= (1 - fade_color * 0.25)
     hsv = np.clip(hsv, 0, 255)
     face = cv2.cvtColor(np.uint8(hsv), cv2.COLOR_HSV2RGB)
 
-    # 3. Textura de piel
+    # --- 3️⃣ Textura de piel (ruido sutil) ---
     if wrinkle > 0.3:
         noise_intensity = min(wrinkle * 12, 20)
         noise = np.random.normal(0, noise_intensity, face.shape).astype(np.int16)
@@ -218,16 +287,16 @@ def apply_transformations(img, params):
         face_with_noise = np.clip(face.astype(np.int16) + noise * noise_mask, 0, 255)
         face = face_with_noise.astype(np.uint8)
 
-    # 4. Ojeras
+    # --- 4️⃣ OJERAS MEJORADAS (NUEVO) ---
     face = apply_under_eye_bags(face, w, h, wrinkle)
 
-    # 5. Labios delgados
+    # --- 5️⃣ LABIOS ADELGAZADOS (NUEVO) ---
     face = thin_lips(face, w, h, wrinkle)
 
-    # 6. Arrugas alrededor de ojos
+    # --- 6️⃣ ARRUGAS ALREDEDOR DE OJOS (NUEVO) ---
     face = add_wrinkles_around_eyes(face, w, h, edge_strength)
 
-    # 7. Manchas de edad
+    # --- 7️⃣ Manchas de edad ---
     if wrinkle > 0.5:
         num_spots = int(wrinkle * 5)
         for _ in range(num_spots):
@@ -239,7 +308,7 @@ def apply_transformations(img, params):
             cv2.circle(overlay, (rx, ry), rs, (140, 120, 100), -1)
             face = cv2.addWeighted(face, 0.92, overlay, 0.08, 0)
 
-    # 8. Líneas de expresión
+    # --- 8️⃣ Líneas de expresión generales ---
     if edge_strength > 0.4:
         gray_face = cv2.cvtColor(face, cv2.COLOR_RGB2GRAY)
         edges = cv2.Canny(gray_face, 80, 150)
@@ -253,7 +322,7 @@ def apply_transformations(img, params):
         alpha = min(edge_strength * 0.15, 0.25)
         face = cv2.addWeighted(face, 1.0, wrinkles, alpha, 0)
 
-    # 9. Cabello gris
+    # --- 9️⃣ Cabello gris ---
     if wrinkle > 0.7:
         hair_height = int(h * 0.20)
         if hair_height > 0:
@@ -262,7 +331,7 @@ def apply_transformations(img, params):
             hair_area = cv2.addWeighted(hair_area, 0.80, gray_overlay, 0.20, 0)
             face[:hair_height, :] = hair_area
 
-    # 10. Fusión suave con el fondo
+    # --- 🔟 FUSIÓN SUAVE CON EL FONDO ---
     blend_mask = create_smooth_mask(w, h, margin=40)
     blend_mask_3d = np.dstack([blend_mask] * 3)
 

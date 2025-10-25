@@ -1,12 +1,17 @@
-PARÁMETROS ÓPTIMOS ENCONTRADOS
+🔬 PARÁMETROS ÓPTIMOS ENCONTRADOS
 ========================================
 
-Wrinkle (arrugas):      1.000000
-Desaturation (color):   0.313888
-Fade (tonos cálidos):   0.913962
-Edge strength (líneas): 0.180437
+Algoritmo: DE
 
-Fitness final: -0.664581
+Wrinkle (arrugas):      0.033227
+Desaturation (color):   1.000000
+Fade (tono cálido):     0.372905
+Edge Strength (bordes): 1.000000
 
-Generaciones: 25
-Población: 30
+Fitness final: -2.963857
+
+Configuración:
+  Generaciones: 30
+  Población: 100
+  Tasa mutación: 0.2
+  Tasa crossover: 0.8

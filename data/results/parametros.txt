@@ -1,0 +1,10 @@
+🔬 PARÁMETROS ÓPTIMOS ENCONTRADOS
+========================================
+Wrinkle (arrugas):      0.0381
+Desaturation (color):   1.0000
+Fade (tono cálido):     0.9954
+Edge Strength (bordes): 0.1458
+
+Fitness final: -0.1673
+Generaciones: 25
+Población: 30
